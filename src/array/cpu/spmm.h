@@ -5,6 +5,10 @@
  */
 #ifndef DGL_ARRAY_CPU_SPMM_H_
 #define DGL_ARRAY_CPU_SPMM_H_
+#include <oneapi/dpl/algorithm>
+#include <oneapi/dpl/execution>
+#include <oneapi/dpl/iterator>
+#include <CL/sycl.hpp>
 
 #include <dgl/array.h>
 #include <dgl/bcast.h>
@@ -51,6 +55,10 @@ SpMMSumCsrNaive(
   const IdType* indptr = csr.indptr.Ptr<IdType>();
   const IdType* indices = csr.indices.Ptr<IdType>();
   const IdType* edges = csr.data.Ptr<IdType>();
+  const sycl::device& dvc = sycl::device{sycl::cpu_selector{}};
+  auto mem = dvc.get_info<sycl::info::device::global_mem_size>();
+  std::cout<<"global memory: "<<mem<<" bytes, "<<mem/1000000000.0<<" GB"<<std::endl;
+
   int64_t dim = bcast.out_len, lhs_dim = bcast.lhs_len, rhs_dim = bcast.rhs_len;
   runtime::parallel_for(0, csr.num_rows, [&](size_t b, size_t e) {
     for (auto rid = b; rid < e; ++rid) {
@@ -84,6 +92,7 @@ SpMMSumCsrNaive(
   const IdType* indptr = csr.indptr.Ptr<IdType>();
   const IdType* indices = csr.indices.Ptr<IdType>();
   const IdType* edges = csr.data.Ptr<IdType>();
+  
   int64_t dim = bcast.out_len, lhs_dim = bcast.lhs_len, rhs_dim = bcast.rhs_len;
   runtime::parallel_for(0, csr.num_rows, [&](size_t b, size_t e) {
     for (auto rid = b; rid < e; ++rid) {

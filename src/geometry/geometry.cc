@@ -4,6 +4,7 @@
  * @brief DGL geometry utilities implementation
  */
 #include <dgl/array.h>
+#include <dgl/packed_func_ext.h>
 #include <dgl/base_heterograph.h>
 #include <dgl/runtime/ndarray.h>
 

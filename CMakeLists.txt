@@ -5,6 +5,7 @@ cmake_minimum_required(VERSION 3.5)
 project(dgl C CXX)
 message(STATUS "Start configuring project ${PROJECT_NAME}")
 
+
 # cmake utils
 include(cmake/util/Util.cmake)
 include(cmake/util/MshadowUtil.cmake)
@@ -24,7 +25,7 @@ endif()
 # Alernatively, use cmake -DOPTION=VALUE through command-line.
 dgl_option(USE_CUDA "Build with CUDA" OFF)
 dgl_option(USE_OPENMP "Build with OpenMP" ON)
-dgl_option(USE_LIBXSMM "Build with LIBXSMM library optimization" ON)
+dgl_option(USE_LIBXSMM "Build with LIBXSMM library optimization" OFF)
 dgl_option(BUILD_CPP_TEST "Build cpp unittest executables" OFF)
 dgl_option(LIBCXX_ENABLE_PARALLEL_ALGORITHMS "Enable the parallel algorithms library. This requires the PSTL to be available." OFF)
 dgl_option(USE_S3 "Build with S3 support" OFF)
@@ -35,6 +36,19 @@ dgl_option(BUILD_TORCH "Build the PyTorch plugin" OFF)
 dgl_option(BUILD_SPARSE "Build DGL sparse library" ON)
 dgl_option(BUILD_GRAPHBOLT "Build Graphbolt library" OFF)
 dgl_option(TORCH_PYTHON_INTERPS "Python interpreter used to build tensoradapter and DGL sparse library" python3)
+
+
+set(INTEL_ONEAPI_HOME $ENV{ONEAPI_ROOT})
+#set(INTEL_ONEAPI_HOME "/home/pablo/intel/oneapi")
+
+set(OpenMP_libiomp5_LIBRARY "${INTEL_ONEAPI_HOME}/compiler/latest/linux/compiler/lib/intel64_lin/libiomp5.so")
+set(OpenMP_CXX_LIB_NAMES "libiomp5")
+set(OpenMP_CXX_FLAGS "-fiopenmp")
+set(OpenMP_C_LIB_NAMES "libiomp5")
+set(OpenMP_C_FLAGS "-fopenmp")
+
+###################
+
 
 # Set debug compile option for gdb, only happens when -DCMAKE_BUILD_TYPE=DEBUG
 if (NOT MSVC)
@@ -123,6 +137,12 @@ if ((NOT MSVC) AND USE_EPOLL)
   endif()
 endif ()
 
+
+#set(CMAKE_CXX_COMPILER ${INTEL_ONEAPI_HOME}/compiler/latest/linux/bin/icpx)
+#set(CMAKE_C_COMPILER ${INTEL_ONEAPI_HOME}/compiler/latest/linux/bin/icx)
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -fPIC -std=c++17 -fsycl")
+
 # To compile METIS correct for DGL.
 if(MSVC)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /DIDXTYPEWIDTH=64 /DREALTYPEWIDTH=32")
@@ -171,7 +191,8 @@ else(USE_CUDA)
   add_library(dgl SHARED ${DGL_SRC})
 endif(USE_CUDA)
 
-set_property(TARGET dgl PROPERTY CXX_STANDARD 14)
+
+set_property(TARGET dgl PROPERTY CXX_STANDARD 17)
 
 # include directories
 target_include_directories(dgl PRIVATE "include")
@@ -183,6 +204,8 @@ target_include_directories(dgl PRIVATE "tensoradapter/include")
 target_include_directories(dgl PRIVATE "third_party/nanoflann/include")
 target_include_directories(dgl PRIVATE "third_party/libxsmm/include")
 target_include_directories(dgl PRIVATE "third_party/pcg/include")
+
+
 
 # For serialization
 if (USE_HDFS)
