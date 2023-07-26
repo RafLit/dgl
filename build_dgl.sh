@@ -2,8 +2,8 @@
 
 
 cd build
-rm -rf *
-cmake .. -DCMAKE_CXX_COMPILER=/home/pablo/intel/oneapi/compiler/latest/linux/bin/icpx
+#rm -rf *
+#cmake .. -DCMAKE_CXX_COMPILER=/home/pablo/intel/oneapi/compiler/latest/linux/bin/icpx
 make -j24
 
 

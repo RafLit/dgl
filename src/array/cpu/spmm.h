@@ -27,9 +27,67 @@
 #include "spmm_blocking_libxsmm.h"
 #endif  // USE_LIBXSMM
 #endif  // _WIN32
+
+#define show(x) std::cout << "[GPU]: " <<  x << std::endl;
+#define show_error(x) std::cout << "[ERROR-GPU]: " <<  x << std::endl;
+
+
+struct gpu_handler {
+      sycl::device dev;
+      std::unique_ptr<sycl::queue> qptr;
+      gpu_handler() : dev{sycl::cpu_selector{}} {            
+             show("Name =" << dev.get_info<sycl::info::device::name>() << " mem size = " << dev.get_info<sycl::info::device::global_mem_size>());
+             qptr =  std::make_unique<sycl::queue>(dev);
+             if(!qptr)
+             {
+                show("Can't create stream ");
+             }
+             show("stream created :)");
+
+      }
+
+       void copy(sycl::queue &q, void *dst, const void *src, size_t size) {
+       q.submit([&](sycl::handler &h) { h.memcpy(dst, src, size); });
+       q.wait();
+       }
+
+      void copy(void *dst, const void *src, size_t size) {
+          copy(*qptr, dst, src, size);
+      }
+
+      void* alloc(size_t size) {
+
+            void *mem = nullptr; 
+            mem = sycl::aligned_alloc_device(64, size, *qptr);
+            if(!mem)
+            {
+              show_error("Can't allocate memory!! " << size);
+            }
+            return mem;
+      }
+
+
+      void dealloc(void *mem) {
+          sycl::free(mem,*qptr);
+          show("Deallocate mmory");
+      }
+
+
+     template<class F>
+     void submit_for(size_t N, F f) {
+             qptr->submit([&](sycl::handler &h){ h.parallel_for(N,f); });
+             qptr->wait();
+     } 
+
+};
+
+
+
 namespace dgl {
 namespace aten {
 namespace cpu {
+
+gpu_handler gpu = gpu_handler();
 
 template <typename DType>
 using AccType = typename std::conditional<
@@ -55,30 +113,70 @@ SpMMSumCsrNaive(
   const IdType* indptr = csr.indptr.Ptr<IdType>();
   const IdType* indices = csr.indices.Ptr<IdType>();
   const IdType* edges = csr.data.Ptr<IdType>();
-  const sycl::device& dvc = sycl::device{sycl::cpu_selector{}};
-  auto mem = dvc.get_info<sycl::info::device::global_mem_size>();
-  std::cout<<"global memory: "<<mem<<" bytes, "<<mem/1000000000.0<<" GB"<<std::endl;
-
+  // const sycl::device& dvc = sycl::device{sycl::cpu_selector{}};
+  // auto mem = dvc.get_info<sycl::info::device::global_mem_size>();
+  // std::cout<<"global memory: "<<mem<<" bytes, "<<mem/1000000000.0<<" GB"<<std::endl;
+ 
   int64_t dim = bcast.out_len, lhs_dim = bcast.lhs_len, rhs_dim = bcast.rhs_len;
-  runtime::parallel_for(0, csr.num_rows, [&](size_t b, size_t e) {
-    for (auto rid = b; rid < e; ++rid) {
-      const IdType row_start = indptr[rid], row_end = indptr[rid + 1];
-      DType* out_off = O + rid * dim;
+ 
+ // show( "Use Bcast" <<  bcast.use_bcast  << " "<< dim << ":" << lhs_dim << ":" << rhs_dim << ":" << csr.num_rows);
+
+  
+  gpu.submit_for(csr.num_rows,[=,use_lhs=Op::use_lhs, use_rhs=Op::use_rhs](sycl::id<1> rid){
+
+     const IdType row_start = indptr[rid], row_end = indptr[rid + 1];
+    
+     DType* out_off = O + rid * dim;
       for (IdType j = row_start; j < row_end; ++j) {
         const IdType cid = indices[j];
         const IdType eid = has_idx ? edges[j] : j;
         for (int64_t k = 0; k < dim; ++k) {
-          const int64_t lhs_add = bcast.use_bcast ? bcast.lhs_offset[k] : k;
-          const int64_t rhs_add = bcast.use_bcast ? bcast.rhs_offset[k] : k;
-          const DType* lhs_off =
-              Op::use_lhs ? X + cid * lhs_dim + lhs_add : nullptr;
-          const DType* rhs_off =
-              Op::use_rhs ? W + eid * rhs_dim + rhs_add : nullptr;
-          out_off[k] += Op::Call(lhs_off, rhs_off);
+          // const int64_t lhs_add = bcast.use_bcast ? bcast.lhs_offset[k] : k;
+          // const int64_t rhs_add = bcast.use_bcast ? bcast.rhs_offset[k] : k;
+       
+          const int64_t lhs_add =  k;
+          const int64_t rhs_add =  k;
+      
+          const DType* lhs_off =  use_lhs ? X + cid * lhs_dim + lhs_add : nullptr;
+          const DType* rhs_off =  use_rhs ? W + eid * rhs_dim + rhs_add : nullptr;
+       
+          if(lhs_off && rhs_off) {
+           out_off[k] += (*lhs_off + *rhs_off);
+          } else if (lhs_off) {
+               out_off[k] += *lhs_off;
+          } else {
+              out_off[k] +=  *rhs_off;
+          }
+         // out_off[k] += Op::Call(lhs_off, rhs_off);
+         // out_off[k] += Op::Call(lhs_off, rhs_off);
+        
         }
       }
-    }
+
+
   });
+
+
+  // runtime::parallel_for(0, csr.num_rows, [&](size_t b, size_t e) {
+  //   for (auto rid = b; rid < e; ++rid) {
+  //     const IdType row_start = indptr[rid], row_end = indptr[rid + 1];
+  //     DType* out_off = O + rid * dim;
+  //     for (IdType j = row_start; j < row_end; ++j) {
+  //       const IdType cid = indices[j];
+  //       const IdType eid = has_idx ? edges[j] : j;
+  //       for (int64_t k = 0; k < dim; ++k) {
+  //         const int64_t lhs_add = bcast.use_bcast ? bcast.lhs_offset[k] : k;
+  //         const int64_t rhs_add = bcast.use_bcast ? bcast.rhs_offset[k] : k;
+  //         const DType* lhs_off =
+  //             Op::use_lhs ? X + cid * lhs_dim + lhs_add : nullptr;
+  //         const DType* rhs_off =
+  //             Op::use_rhs ? W + eid * rhs_dim + rhs_add : nullptr;
+  //         out_off[k] += Op::Call(lhs_off, rhs_off);
+  //       }
+  //     }
+  //   }
+  // });
+
 }
 
 // Naive implementation with additional accumulator, which prevents accuracy
