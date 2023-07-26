@@ -32,6 +32,10 @@
 #define show_error(x) std::cout << "[ERROR-GPU]: " <<  x << std::endl;
 
 
+
+
+
+
 struct gpu_handler {
       sycl::device dev;
       std::unique_ptr<sycl::queue> qptr;
@@ -55,7 +59,7 @@ struct gpu_handler {
           copy(*qptr, dst, src, size);
       }
 
-      void* alloc(size_t size) {
+      void* alloc_bytes(size_t size) {
 
             void *mem = nullptr; 
             mem = sycl::aligned_alloc_device(64, size, *qptr);
@@ -63,13 +67,20 @@ struct gpu_handler {
             {
               show_error("Can't allocate memory!! " << size);
             }
+            show("alloc "<< size);
             return mem;
       }
+
+      template<class T>
+      T* alloc(size_t size) {
+            return reinterpret_cast<T*>(alloc_bytes(size*sizeof(T)));
+      }
+     
 
 
       void dealloc(void *mem) {
           sycl::free(mem,*qptr);
-          show("Deallocate mmory");
+          show("dealloc mem");
       }
 
 
@@ -88,6 +99,25 @@ namespace aten {
 namespace cpu {
 
 gpu_handler gpu = gpu_handler();
+
+template<class T>
+struct SyclFree {
+   void operator()(T* ptr) const {  if(ptr) gpu.dealloc(ptr); }
+};
+
+template<class T>
+using sycl_ptr = std::unique_ptr<T,SyclFree<T>>;
+// using sycl_ptr = std::unique_ptr<T>;
+
+
+template<class T> 
+sycl_ptr<T> make_sycl_ptr_from_nd(const dgl::IdArray& tab)
+{
+    sycl_ptr<T> ptr(gpu.alloc<T>(tab.NumElements()));   
+    gpu.copy(ptr.get(),tab.Ptr<T>(),tab.NumElements()*sizeof(T));
+    return ptr;
+}
+
 
 template <typename DType>
 using AccType = typename std::conditional<
@@ -113,20 +143,49 @@ SpMMSumCsrNaive(
   const IdType* indptr = csr.indptr.Ptr<IdType>();
   const IdType* indices = csr.indices.Ptr<IdType>();
   const IdType* edges = csr.data.Ptr<IdType>();
-  // const sycl::device& dvc = sycl::device{sycl::cpu_selector{}};
-  // auto mem = dvc.get_info<sycl::info::device::global_mem_size>();
-  // std::cout<<"global memory: "<<mem<<" bytes, "<<mem/1000000000.0<<" GB"<<std::endl;
+
  
   int64_t dim = bcast.out_len, lhs_dim = bcast.lhs_len, rhs_dim = bcast.rhs_len;
  
  // show( "Use Bcast" <<  bcast.use_bcast  << " "<< dim << ":" << lhs_dim << ":" << rhs_dim << ":" << csr.num_rows);
+   
+  auto gpu_indptr = make_sycl_ptr_from_nd<IdType>(csr.indptr);
+  auto gpu_indices = make_sycl_ptr_from_nd<IdType>(csr.indices);
+  auto gpu_edges = make_sycl_ptr_from_nd<IdType>(csr.data);
 
+  sycl_ptr<DType> gpu_X((Op::use_lhs) ? gpu.alloc<DType>(csr.num_rows*lhs_dim+dim) : nullptr);
   
-  gpu.submit_for(csr.num_rows,[=,use_lhs=Op::use_lhs, use_rhs=Op::use_rhs](sycl::id<1> rid){
+  if(gpu_X) {
+     gpu.copy(gpu_X.get(),X,sizeof(DType)*csr.num_rows*lhs_dim+dim);      
+  }
+
+  sycl_ptr<DType> gpu_W((Op::use_rhs) ? gpu.alloc<DType>(csr.num_rows*rhs_dim+dim) : nullptr);
+  
+  if(gpu_W) {
+       gpu.copy(gpu_W.get(),W,sizeof(DType)*csr.num_rows*rhs_dim+dim);      
+  }
+
+  sycl_ptr<DType> gpu_O(gpu.alloc<DType>(csr.num_rows*dim));
+  
+  indptr = gpu_indptr.get();
+  indices = gpu_indices.get();
+  edges = gpu_edges.get();
+
+  X = gpu_X.get();
+
+  DType* tmp_output = O;
+
+  if(gpu_O)
+  {
+     tmp_output = gpu_O.get();
+  }
+
+
+  gpu.submit_for(csr.num_rows,[=,OutPut=tmp_output,use_lhs=Op::use_lhs, use_rhs=Op::use_rhs](sycl::id<1> rid){
 
      const IdType row_start = indptr[rid], row_end = indptr[rid + 1];
     
-     DType* out_off = O + rid * dim;
+     DType* out_off = OutPut + rid * dim;
       for (IdType j = row_start; j < row_end; ++j) {
         const IdType cid = indices[j];
         const IdType eid = has_idx ? edges[j] : j;
@@ -155,6 +214,12 @@ SpMMSumCsrNaive(
 
 
   });
+
+
+  if(gpu_O)
+  {
+     gpu.copy(O,gpu_O.get(),sizeof(DType)*csr.num_rows*dim);
+  }
 
 
   // runtime::parallel_for(0, csr.num_rows, [&](size_t b, size_t e) {
