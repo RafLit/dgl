@@ -9,7 +9,6 @@
 #include <oneapi/dpl/execution>
 #include <oneapi/dpl/iterator>
 #include <CL/sycl.hpp>
-
 #include <dgl/array.h>
 #include <dgl/bcast.h>
 #include <dgl/runtime/config.h>
@@ -28,25 +27,36 @@
 #endif  // USE_LIBXSMM
 #endif  // _WIN32
 
+
 #define show(x) std::cout << "[GPU]: " <<  x << std::endl;
-#define show_error(x) std::cout << "[ERROR-GPU]: " <<  x << std::endl;
+#define show_error(x) std::cout << "[GPU-ERROR]: " <<  x << std::endl;
+// #define show_debug(x) std::cout << "[GPU-DEBUG]: " <<  x << std::endl;
 
-
-
-
+#ifndef show_debug
+#define show_debug(x)
+#endif
 
 
 struct gpu_handler {
-      sycl::device dev;
+      std::unique_ptr<sycl::device> dev;
       std::unique_ptr<sycl::queue> qptr;
-      gpu_handler() : dev{sycl::cpu_selector{}} {            
-             show("Name =" << dev.get_info<sycl::info::device::name>() << " mem size = " << dev.get_info<sycl::info::device::global_mem_size>());
-             qptr =  std::make_unique<sycl::queue>(dev);
+      gpu_handler() { 
+
+             if(std::getenv("SELECTOR_CPU"))
+             {
+                dev = std::make_unique<sycl::device>( sycl::cpu_selector{} );                     
+             } else {
+                dev = std::make_unique<sycl::device>( sycl::gpu_selector{} ); 
+             }              
+
+
+             show("Name =" << dev->get_info<sycl::info::device::name>() << " mem size = " << dev->get_info<sycl::info::device::global_mem_size>());
+             qptr =  std::make_unique<sycl::queue>(*dev);
              if(!qptr)
              {
-                show("Can't create stream ");
+                show_error("Can't create stream ");
              }
-             show("stream created :)");
+             show_debug("stream created :)");
 
       }
 
@@ -67,7 +77,7 @@ struct gpu_handler {
             {
               show_error("Can't allocate memory!! " << size);
             }
-            show("alloc "<< size);
+            show_debug("alloc "<< size);
             return mem;
       }
 
@@ -80,12 +90,13 @@ struct gpu_handler {
 
       void dealloc(void *mem) {
           sycl::free(mem,*qptr);
-          show("dealloc mem");
+          show_debug("dealloc mem");
       }
 
 
      template<class F>
      void submit_for(size_t N, F f) {
+             show_debug("submit work " << N); 
              qptr->submit([&](sycl::handler &h){ h.parallel_for(N,f); });
              qptr->wait();
      } 
