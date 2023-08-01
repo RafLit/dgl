@@ -77,6 +77,8 @@ struct gpu_handler {
             {
               show_error("Can't allocate memory!! " << size);
             }
+
+            qptr->memset(mem,0,size);
             show_debug("alloc "<< size);
             return mem;
       }
