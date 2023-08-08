@@ -1,7 +1,7 @@
 import argparse
 
 import dgl.nn as dglnn
-
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -44,7 +44,7 @@ def train(g, features, labels, masks, model):
     train_mask, val_mask = masks
     loss_fcn = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-2, weight_decay=5e-4)
-
+    start_time = time.time()
     # training loop
     for epoch in range(200):
         model.train()
@@ -59,6 +59,7 @@ def train(g, features, labels, masks, model):
                 epoch, loss.item(), acc
             )
         )
+    print(f'Total time in sec = {time.time()-start_time}')
 
 
 if __name__ == "__main__":

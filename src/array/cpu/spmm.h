@@ -48,9 +48,7 @@ struct gpu_handler {
              } else {
                 dev = std::make_unique<sycl::device>( sycl::gpu_selector{} ); 
              }              
-
-
-             show("Name =" << dev->get_info<sycl::info::device::name>() << " mem size = " << dev->get_info<sycl::info::device::global_mem_size>());
+             
              qptr =  std::make_unique<sycl::queue>(*dev);
              if(!qptr)
              {
@@ -58,6 +56,18 @@ struct gpu_handler {
              }
              show_debug("stream created :)");
 
+      }
+
+      ~gpu_handler() {
+                info();
+      }
+
+      void info() {
+
+        if(dev)
+        {
+          show("Name =" << dev->get_info<sycl::info::device::name>() << " mem size = " << dev->get_info<sycl::info::device::global_mem_size>());
+        }
       }
 
        void copy(sycl::queue &q, void *dst, const void *src, size_t size) {
