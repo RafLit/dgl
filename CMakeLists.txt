@@ -2,6 +2,24 @@ cmake_minimum_required(VERSION 3.5)
 ########################################
 # Borrowed and adapted from TVM project
 ########################################
+set(INTEL_ONEAPI_HOME $ENV{ONEAPI_ROOT})
+set(CMAKE_CXX_COMPILER ${INTEL_ONEAPI_HOME}/compiler/latest/linux/bin/icpx)
+set(CMAKE_C_COMPILER ${INTEL_ONEAPI_HOME}/compiler/latest/linux/bin/icx)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -fPIC -std=c++17 -fsycl")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fPIC")
+set(OpenMP_libiomp5_LIBRARY "${INTEL_ONEAPI_HOME}/compiler/latest/linux/compiler/lib/intel64_lin/libiomp5.so")
+set(OpenMP_CXX_LIB_NAMES "libiomp5")
+set(OpenMP_CXX_FLAGS "-fiopenmp")
+set(OpenMP_C_LIB_NAMES "libiomp5")
+set(OpenMP_C_FLAGS "-fopenmp")
+
+#include(CheckCXXCompilerFlag)
+#set(CMAKE_C_FLAGS "-O2 -Wall -fPIC ${CMAKE_C_FLAGS}")
+#set(CMAKE_CXX_FLAGS "-O2 -Wall -fPIC -std=c++14 ${CMAKE_CXX_FLAGS}")
+#if(NOT APPLE)
+#set(CMAKE_SHARED_LINKER_FLAGS "-Wl,--warn-common ${CMAKE_SHARED_LINKER_FLAGS}")
+#endif(NOT APPLE)
+
 project(dgl C CXX)
 message(STATUS "Start configuring project ${PROJECT_NAME}")
 
@@ -38,14 +56,8 @@ dgl_option(BUILD_GRAPHBOLT "Build Graphbolt library" OFF)
 dgl_option(TORCH_PYTHON_INTERPS "Python interpreter used to build tensoradapter and DGL sparse library" python3)
 
 
-set(INTEL_ONEAPI_HOME $ENV{ONEAPI_ROOT})
 #set(INTEL_ONEAPI_HOME "/home/pablo/intel/oneapi")
 
-set(OpenMP_libiomp5_LIBRARY "${INTEL_ONEAPI_HOME}/compiler/latest/linux/compiler/lib/intel64_lin/libiomp5.so")
-set(OpenMP_CXX_LIB_NAMES "libiomp5")
-set(OpenMP_CXX_FLAGS "-fiopenmp")
-set(OpenMP_C_LIB_NAMES "libiomp5")
-set(OpenMP_C_FLAGS "-fopenmp")
 
 ###################
 
@@ -98,12 +110,6 @@ if(MSVC)
     endforeach(flag_var)
   endif()
 else(MSVC)
-  include(CheckCXXCompilerFlag)
-  set(CMAKE_C_FLAGS "-O2 -Wall -fPIC ${CMAKE_C_FLAGS}")
-  set(CMAKE_CXX_FLAGS "-O2 -Wall -fPIC -std=c++14 ${CMAKE_CXX_FLAGS}")
-  if(NOT APPLE)
-    set(CMAKE_SHARED_LINKER_FLAGS "-Wl,--warn-common ${CMAKE_SHARED_LINKER_FLAGS}")
-  endif(NOT APPLE)
 endif(MSVC)
 
 if(USE_OPENMP)
@@ -138,10 +144,7 @@ if ((NOT MSVC) AND USE_EPOLL)
 endif ()
 
 
-#set(CMAKE_CXX_COMPILER ${INTEL_ONEAPI_HOME}/compiler/latest/linux/bin/icpx)
-#set(CMAKE_C_COMPILER ${INTEL_ONEAPI_HOME}/compiler/latest/linux/bin/icx)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -fPIC -std=c++17 -fsycl")
 
 # To compile METIS correct for DGL.
 if(MSVC)
