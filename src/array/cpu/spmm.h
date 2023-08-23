@@ -16,6 +16,7 @@
 #include <math.h>
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <vector>
@@ -38,6 +39,7 @@
 
 
 struct gpu_handler {
+      std::atomic<uint64_t> cp_time;
       std::unique_ptr<sycl::device> dev;
       std::unique_ptr<sycl::queue> qptr;
       gpu_handler() { 
@@ -87,7 +89,6 @@ struct gpu_handler {
             {
               show_error("Can't allocate memory!! " << size);
             }
-
             qptr->memset(mem,0,size);
             show_debug("alloc "<< size);
             return mem;
@@ -202,35 +203,39 @@ SpMMSumCsrNaive(
   {
      tmp_output = gpu_O.get();
   }
+  const int64_t* tmp_rhs_offset = bcast.rhs_offset.data();
+  const int64_t* tmp_lhs_offset = bcast.lhs_offset.data();
+  sycl_ptr<int64_t> lhs_offset((bcast.use_bcast) ? gpu.alloc<int64_t>(dim) : nullptr);
+  sycl_ptr<int64_t> rhs_offset((bcast.use_bcast) ? gpu.alloc<int64_t>(dim) : nullptr);
+  if(lhs_offset) {
+       gpu.copy(lhs_offset.get(),tmp_lhs_offset,sizeof(int64_t)*dim);      
+       tmp_lhs_offset = lhs_offset.get();
+  }
+  if(rhs_offset) {
+       gpu.copy(rhs_offset.get(),tmp_rhs_offset,sizeof(int64_t)*dim);      
+       tmp_rhs_offset = rhs_offset.get();
+  }
 
 
-  gpu.submit_for(csr.num_rows,[=,OutPut=tmp_output,use_lhs=Op::use_lhs, use_rhs=Op::use_rhs](sycl::id<1> rid){
+
+  std::cout<<"spmm my"<<std::endl;
+  gpu.submit_for(csr.num_rows,[=,OutPut=tmp_output,use_lhs=Op::use_lhs, use_rhs=Op::use_rhs, use_bcast=bcast.use_bcast](sycl::id<1> rid){
 
      const IdType row_start = indptr[rid], row_end = indptr[rid + 1];
-    
+
      DType* out_off = OutPut + rid * dim;
       for (IdType j = row_start; j < row_end; ++j) {
         const IdType cid = indices[j];
         const IdType eid = has_idx ? edges[j] : j;
         for (int64_t k = 0; k < dim; ++k) {
-          // const int64_t lhs_add = bcast.use_bcast ? bcast.lhs_offset[k] : k;
-          // const int64_t rhs_add = bcast.use_bcast ? bcast.rhs_offset[k] : k;
+          const int64_t lhs_add = use_bcast ? tmp_lhs_offset[k] : k;
+          const int64_t rhs_add = use_bcast ? tmp_rhs_offset[k] : k;
        
-          const int64_t lhs_add =  k;
-          const int64_t rhs_add =  k;
       
           const DType* lhs_off =  use_lhs ? X + cid * lhs_dim + lhs_add : nullptr;
           const DType* rhs_off =  use_rhs ? W + eid * rhs_dim + rhs_add : nullptr;
        
-          if(lhs_off && rhs_off) {
-           out_off[k] += (*lhs_off + *rhs_off);
-          } else if (lhs_off) {
-               out_off[k] += *lhs_off;
-          } else {
-              out_off[k] +=  *rhs_off;
-          }
-         // out_off[k] += Op::Call(lhs_off, rhs_off);
-         // out_off[k] += Op::Call(lhs_off, rhs_off);
+          out_off[k] += Op::Call(lhs_off, rhs_off);
         
         }
       }
