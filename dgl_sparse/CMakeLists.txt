@@ -1,4 +1,14 @@
 cmake_minimum_required(VERSION 3.5)
+set(INTEL_ONEAPI_HOME $ENV{ONEAPI_ROOT})
+set(CMAKE_CXX_COMPILER ${INTEL_ONEAPI_HOME}/compiler/latest/linux/bin/icpx)
+set(CMAKE_C_COMPILER ${INTEL_ONEAPI_HOME}/compiler/latest/linux/bin/icx)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -fPIC -std=c++17 -fsycl")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fPIC")
+set(OpenMP_libiomp5_LIBRARY "${INTEL_ONEAPI_HOME}/compiler/latest/linux/compiler/lib/intel64_lin/libiomp5.so")
+set(OpenMP_CXX_LIB_NAMES "libiomp5")
+set(OpenMP_CXX_FLAGS "-fiopenmp")
+set(OpenMP_C_LIB_NAMES "libiomp5")
+set(OpenMP_C_FLAGS "-fopenmp")
 project(dgl_sparse C CXX)
 
 # Find PyTorch cmake files and PyTorch versions with the python interpreter $PYTHON_INTERP
