@@ -89,7 +89,7 @@ struct gpu_handler {
             {
               show_error("Can't allocate memory!! " << size);
             }
-            qptr->memset(mem,0,size);
+            //qptr->memset(mem,0,size);
             show_debug("alloc "<< size);
             return mem;
       }
@@ -122,7 +122,7 @@ namespace dgl {
 namespace aten {
 namespace cpu {
 
-gpu_handler gpu = gpu_handler();
+static gpu_handler gpu = gpu_handler();
 
 template<class T>
 struct SyclFree {
