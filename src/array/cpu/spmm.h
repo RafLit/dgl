@@ -14,6 +14,7 @@
 #include <dgl/runtime/config.h>
 #include <dgl/runtime/parallel_for.h>
 #include <math.h>
+#include "gpu_handler.h"
 
 #include <algorithm>
 #include <functional>
@@ -29,92 +30,39 @@
 #endif  // _WIN32
 
 
-#define show(x) std::cout << "[GPU]: " <<  x << std::endl;
-#define show_error(x) std::cout << "[GPU-ERROR]: " <<  x << std::endl;
-// #define show_debug(x) std::cout << "[GPU-DEBUG]: " <<  x << std::endl;
 
-#ifndef show_debug
-#define show_debug(x)
-#endif
-
-
-struct gpu_handler {
-      std::atomic<uint64_t> cp_time;
-      std::unique_ptr<sycl::device> dev;
-      std::unique_ptr<sycl::queue> qptr;
-      gpu_handler() { 
-
-             if(std::getenv("SELECTOR_CPU"))
-             {
-                dev = std::make_unique<sycl::device>( sycl::cpu_selector{} );                     
-             } else {
-                dev = std::make_unique<sycl::device>( sycl::gpu_selector{} ); 
-             }              
-             
-             qptr =  std::make_unique<sycl::queue>(*dev);
-             if(!qptr)
-             {
-                show_error("Can't create stream ");
-             }
-             show_debug("stream created :)");
-
+struct timers_spmm {
+      std::atomic<uint64_t> all_time;
+      std::atomic<uint64_t> cp_indptr_time;
+      std::atomic<uint64_t> cp_indices_time;
+      std::atomic<uint64_t> cp_edg_time;
+      std::atomic<uint64_t> cp_x_time;
+      std::atomic<uint64_t> cp_w_time;
+      std::atomic<uint64_t> cp_o_time;
+      std::atomic<uint64_t> kernel_time;
+      timers_spmm() {
+	     all_time = 0;
+             cp_indptr_time = 0;
+             cp_indices_time = 0;
+             cp_edg_time = 0; 
+             cp_x_time = 0;
+             cp_w_time = 0;
+             cp_o_time = 0; 
+             kernel_time = 0;
       }
-
-      ~gpu_handler() {
-                info();
+      ~timers_spmm() {
+		std::cout<<"spmm: "<<std::endl;
+		std::cout<<"time [s]: "<<all_time/1e9f<<std::endl;
+		std::cout<<"copy indptr time [s]: "<<cp_indptr_time/1e9f<<std::endl;
+		std::cout<<"copy indices time [s]: "<<cp_indices_time/1e9f<<std::endl;
+		std::cout<<"copy edges time [s]: "<<cp_edg_time/1e9f<<std::endl;
+		std::cout<<"copy x time [s]: "<<cp_x_time/1e9f<<std::endl;
+		std::cout<<"copy w time [s]: "<<cp_w_time/1e9f<<std::endl;
+		std::cout<<"copy o time [s]: "<<cp_o_time/1e9f<<std::endl;
+		std::cout<<"kernel time [s]: "<<kernel_time/1e9f<<std::endl;
       }
-
-      void info() {
-
-        if(dev)
-        {
-          show("Name =" << dev->get_info<sycl::info::device::name>() << " mem size = " << dev->get_info<sycl::info::device::global_mem_size>());
-        }
-      }
-
-       void copy(sycl::queue &q, void *dst, const void *src, size_t size) {
-       q.submit([&](sycl::handler &h) { h.memcpy(dst, src, size); });
-       q.wait();
-       }
-
-      void copy(void *dst, const void *src, size_t size) {
-          copy(*qptr, dst, src, size);
-      }
-
-      void* alloc_bytes(size_t size) {
-
-            void *mem = nullptr; 
-            mem = sycl::aligned_alloc_device(64, size, *qptr);
-            if(!mem)
-            {
-              show_error("Can't allocate memory!! " << size);
-            }
-            //qptr->memset(mem,0,size);
-            show_debug("alloc "<< size);
-            return mem;
-      }
-
-      template<class T>
-      T* alloc(size_t size) {
-            return reinterpret_cast<T*>(alloc_bytes(size*sizeof(T)));
-      }
-     
-
-
-      void dealloc(void *mem) {
-          sycl::free(mem,*qptr);
-          show_debug("dealloc mem");
-      }
-
-
-     template<class F>
-     void submit_for(size_t N, F f) {
-             show_debug("submit work " << N); 
-             qptr->submit([&](sycl::handler &h){ h.parallel_for(N,f); });
-             qptr->wait();
-     } 
-
 };
+
 
 
 
@@ -122,7 +70,8 @@ namespace dgl {
 namespace aten {
 namespace cpu {
 
-static gpu_handler gpu = gpu_handler();
+static timers_spmm tim{};
+static gpu_handler gpu{};
 
 template<class T>
 struct SyclFree {
@@ -163,6 +112,7 @@ typename std::enable_if<!std::is_same<DType, BFloat16>::value, void>::type
 SpMMSumCsrNaive(
     const BcastOff& bcast, const CSRMatrix& csr, const DType* X, const DType* W,
     DType* O) {
+  std::chrono::high_resolution_clock::time_point t00 = std::chrono::high_resolution_clock::now();
   const bool has_idx = !IsNullArray(csr.data);
   const IdType* indptr = csr.indptr.Ptr<IdType>();
   const IdType* indices = csr.indices.Ptr<IdType>();
@@ -173,21 +123,35 @@ SpMMSumCsrNaive(
  
  // show( "Use Bcast" <<  bcast.use_bcast  << " "<< dim << ":" << lhs_dim << ":" << rhs_dim << ":" << csr.num_rows);
    
+  std::chrono::high_resolution_clock::time_point t0 = std::chrono::high_resolution_clock::now();
   auto gpu_indptr = make_sycl_ptr_from_nd<IdType>(csr.indptr);
+  std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
+  tim.cp_indptr_time += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+  t0 = std::chrono::high_resolution_clock::now();
   auto gpu_indices = make_sycl_ptr_from_nd<IdType>(csr.indices);
+  t1 = std::chrono::high_resolution_clock::now();
+  tim.cp_indices_time += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+  t0 = std::chrono::high_resolution_clock::now();
   auto gpu_edges = make_sycl_ptr_from_nd<IdType>(csr.data);
+  t1 = std::chrono::high_resolution_clock::now();
+  tim.cp_edg_time += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
 
   sycl_ptr<DType> gpu_X((Op::use_lhs) ? gpu.alloc<DType>(csr.num_rows*lhs_dim+dim) : nullptr);
   
+  t0 = std::chrono::high_resolution_clock::now();
   if(gpu_X) {
      gpu.copy(gpu_X.get(),X,sizeof(DType)*csr.num_rows*lhs_dim+dim);      
   }
+  t1 = std::chrono::high_resolution_clock::now();
+  tim.cp_x_time += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
 
   sycl_ptr<DType> gpu_W((Op::use_rhs) ? gpu.alloc<DType>(csr.num_rows*rhs_dim+dim) : nullptr);
-  
+  t0 = std::chrono::high_resolution_clock::now();
   if(gpu_W) {
        gpu.copy(gpu_W.get(),W,sizeof(DType)*csr.num_rows*rhs_dim+dim);      
   }
+  t1 = std::chrono::high_resolution_clock::now();
+  tim.cp_w_time += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
 
   sycl_ptr<DType> gpu_O(gpu.alloc<DType>(csr.num_rows*dim));
   
@@ -218,6 +182,7 @@ SpMMSumCsrNaive(
 
 
 
+  t0 = std::chrono::high_resolution_clock::now();
   std::cout<<"spmm my"<<std::endl;
   gpu.submit_for(csr.num_rows,[=,OutPut=tmp_output,use_lhs=Op::use_lhs, use_rhs=Op::use_rhs, use_bcast=bcast.use_bcast](sycl::id<1> rid){
 
@@ -242,12 +207,19 @@ SpMMSumCsrNaive(
 
 
   });
+  t1 = std::chrono::high_resolution_clock::now();
+  tim.kernel_time += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
 
 
+  t0 = std::chrono::high_resolution_clock::now();
   if(gpu_O)
   {
      gpu.copy(O,gpu_O.get(),sizeof(DType)*csr.num_rows*dim);
   }
+  t1 = std::chrono::high_resolution_clock::now();
+  tim.cp_o_time += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+  std::chrono::high_resolution_clock::time_point t11 = std::chrono::high_resolution_clock::now();
+  tim.all_time += std::chrono::duration_cast<std::chrono::nanoseconds>(t11 - t00).count();
 
 
   // runtime::parallel_for(0, csr.num_rows, [&](size_t b, size_t e) {
