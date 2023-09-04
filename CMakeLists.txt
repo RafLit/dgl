@@ -153,7 +153,6 @@ else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
   endif()
 endif()
-=======
 
 #set(INTEL_ONEAPI_HOME "/home/pablo/intel/oneapi")
 
