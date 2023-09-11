@@ -11,6 +11,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 #include "bfloat16.h"
 #include "c_runtime_api.h"
@@ -712,10 +713,13 @@ inline const char* TypeCode2Str(int type_code) {
  */
 inline const char* DeviceTypeCode2Str(DGLDeviceType device_type) {
   switch (device_type) {
+    std::cout<<"device type "<<device_type<<std::endl;
     case kDGLCPU:
       return "cpu";
     case kDGLCUDA:
       return "cuda";
+    case kDGLXPU:
+      return "xpu";
     default:
       LOG(FATAL) << "Unsupported device type code="
                  << static_cast<int>(device_type);

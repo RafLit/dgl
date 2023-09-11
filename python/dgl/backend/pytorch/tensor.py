@@ -107,6 +107,8 @@ def device_type(ctx):
 def device_id(ctx):
     ctx = th.device(ctx)
     if ctx.index is None:
+        if ctx.type == 'xpu':
+            return th.xpu.current_device()
         return 0 if ctx.type == "cpu" else th.cuda.current_device()
     else:
         return ctx.index
@@ -118,6 +120,8 @@ def to_backend_ctx(dglctx):
         return th.device("cpu")
     elif dev_type == 2:
         return th.device("cuda", dglctx.device_id)
+    elif dev_type == 13:
+        return th.device('xpu', 0)
     else:
         raise ValueError("Unsupported DGL device context:", dglctx)
 
@@ -141,6 +145,8 @@ def copy_to(input, ctx, **kwargs):
         if ctx.index is not None:
             th.cuda.set_device(ctx.index)
         return input.cuda(**kwargs)
+    elif ctx.type == "xpu":
+        return input.xpu()
     else:
         raise RuntimeError("Invalid context", ctx)
 
@@ -438,9 +444,9 @@ def zerocopy_to_dgl_ndarray(data):
 # NGC PyTorch containers are shipping alpha version PyTorch.
 if version.parse(th.__version__) >= version.parse("2.0.0a0"):
 
-    def check_is_view(input):
+    def check_is_view(input_):
         assert (
-            input.data_ptr() == input.untyped_storage().data_ptr()
+            input.data_ptr() == input_.untyped_storage().data_ptr()
         ), "Cannot convert view tensors to dgl ndarray for write."
 
 else:

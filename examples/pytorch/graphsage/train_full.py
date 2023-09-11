@@ -6,6 +6,7 @@ import dgl.nn as dglnn
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import intel_extension_for_pytorch as ipex
 from dgl import AddSelfLoop
 from dgl.data import CiteseerGraphDataset, CoraGraphDataset, PubmedGraphDataset
 
@@ -92,8 +93,9 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unknown dataset: {}".format(args.dataset))
     g = data[0]
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    g = g.int().to(device)
+    device = 'xpu' #torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    g = g.int()
+    g = g.to(device)
     features = g.ndata["feat"]
     labels = g.ndata["label"]
     masks = g.ndata["train_mask"], g.ndata["val_mask"]
