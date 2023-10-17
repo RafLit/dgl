@@ -358,7 +358,7 @@ bool CSRHasDuplicate(CSRMatrix csr) {
 int64_t CSRGetRowNNZ(CSRMatrix csr, int64_t row) {
   CHECK(row >= 0 && row < csr.num_rows) << "Invalid row index: " << row;
   int64_t ret = 0;
-  ATEN_CSR_SWITCH_CUDA(csr, XPU, IdType, "CSRGetRowNNZ", {
+  ATEN_CSR_SWITCH_MY(csr, XPU, IdType, "CSRGetRowNNZ", {
     ret = impl::CSRGetRowNNZ<XPU, IdType>(csr, row);
   });
   return ret;
@@ -367,7 +367,7 @@ int64_t CSRGetRowNNZ(CSRMatrix csr, int64_t row) {
 NDArray CSRGetRowNNZ(CSRMatrix csr, NDArray row) {
   NDArray ret;
   CHECK_SAME_DTYPE(csr.indices, row);
-  ATEN_CSR_SWITCH_CUDA_UVA(csr, row, XPU, IdType, "CSRGetRowNNZ", {
+  ATEN_CSR_SWITCH_MY_UVA(csr, row, XPU, IdType, "CSRGetRowNNZ", {
     ret = impl::CSRGetRowNNZ<XPU, IdType>(csr, row);
   });
   return ret;

@@ -257,6 +257,7 @@ file(GLOB DGL_SRC
   src/*.cc
   src/array/*.cc
   src/array/cpu/*.cc
+  src/array/xpu/*.cc
   src/random/*.cc
   src/random/cpu/*.cc
   src/runtime/*.cc
