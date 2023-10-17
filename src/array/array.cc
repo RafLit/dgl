@@ -837,7 +837,7 @@ COOMatrix COOSliceMatrix(COOMatrix coo, NDArray rows, NDArray cols) {
 
 void COOSort_(COOMatrix* mat, bool sort_column) {
   if ((mat->row_sorted && !sort_column) || mat->col_sorted) return;
-  ATEN_XPU_SWITCH_CUDA(mat->row->ctx.device_type, XPU, "COOSort_", {
+  ATEN_XPU_SWITCH_MY(mat->row->ctx.device_type, XPU, "COOSort_", {
     ATEN_ID_TYPE_SWITCH(mat->row->dtype, IdType, {
       impl::COOSort_<XPU, IdType>(mat, sort_column);
     });
