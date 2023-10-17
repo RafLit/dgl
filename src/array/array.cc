@@ -804,7 +804,7 @@ COOMatrix COOTranspose(COOMatrix coo) {
 
 CSRMatrix COOToCSR(COOMatrix coo) {
   CSRMatrix ret;
-  ATEN_XPU_SWITCH_CUDA(coo.row->ctx.device_type, XPU, "COOToCSR", {
+  ATEN_XPU_SWITCH_MY(coo.row->ctx.device_type, XPU, "COOToCSR", {
     ATEN_ID_TYPE_SWITCH(
         coo.row->dtype, IdType, { ret = impl::COOToCSR<XPU, IdType>(coo); });
   });
