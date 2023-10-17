@@ -39,7 +39,7 @@ IdArray Clone(IdArray arr) {
 
 IdArray Range(int64_t low, int64_t high, uint8_t nbits, DGLContext ctx) {
   IdArray ret;
-  ATEN_XPU_SWITCH_CUDA(ctx.device_type, XPU, "Range", {
+  ATEN_XPU_SWITCH_MY(ctx.device_type, XPU, "Range", {
     if (nbits == 32) {
       ret = impl::Range<XPU, int32_t>(low, high, ctx);
     } else if (nbits == 64) {
@@ -53,7 +53,7 @@ IdArray Range(int64_t low, int64_t high, uint8_t nbits, DGLContext ctx) {
 
 IdArray Full(int64_t val, int64_t length, uint8_t nbits, DGLContext ctx) {
   IdArray ret;
-  ATEN_XPU_SWITCH_CUDA(ctx.device_type, XPU, "Full", {
+  ATEN_XPU_SWITCH_MY(ctx.device_type, XPU, "Full", {
     if (nbits == 32) {
       ret = impl::Full<XPU, int32_t>(val, length, ctx);
     } else if (nbits == 64) {
