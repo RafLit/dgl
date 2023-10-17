@@ -24,7 +24,7 @@ void SpMM(
   SparseFormat format = graph->SelectFormat(0, CSC_CODE);
   const auto& bcast = CalcBcastOff(op, ufeat, efeat);
 
-  ATEN_XPU_SWITCH_CUDA(graph->Context().device_type, XPU, "SpMM", {
+  ATEN_XPU_SWITCH_MY(graph->Context().device_type, XPU, "SpMM", {
     ATEN_ID_TYPE_SWITCH(graph->DataType(), IdType, {
       ATEN_FLOAT_TYPE_SWITCH_16BITS(out->dtype, Dtype, XPU, "Feature data", {
         if (format == SparseFormat::kCSC) {
@@ -480,6 +480,7 @@ DGL_REGISTER_GLOBAL("sparse._CAPI_DGLKernelSpMM")
       NDArray V = args[5];
       NDArray ArgU = args[6];
       NDArray ArgE = args[7];
+      
       CheckCtx(
           graph->Context(), {U, E, V, ArgU, ArgE},
           {"U_data", "E_data", "out", "Arg_U", "Arg_E"});
