@@ -260,6 +260,7 @@ file(GLOB DGL_SRC
   src/random/*.cc
   src/random/cpu/*.cc
   src/runtime/*.cc
+  src/runtime/xpu/*.cc
   src/geometry/*.cc
   src/geometry/cpu/*.cc
   src/partition/*.cc
