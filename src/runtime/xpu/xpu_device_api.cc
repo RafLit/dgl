@@ -10,13 +10,27 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <sycl/sycl.hpp>
 
-#include "workspace_pool.h"
+#include "xpu_common.h"
+//#include <xpu/Macros.h>
+//#include <xpu/Stream.h>
+#include <ipex.h>
 
+#include "../workspace_pool.h"
+
+constexpr size_t kDevAlignment = 512;
 namespace dgl {
 namespace runtime {
+sycl::queue& getCurrentXPUStream() {
+  static sycl::queue&  q = xpu::get_queue_from_stream(c10::impl::VirtualGuardImpl(c10::DeviceType::XPU).getStream(c10::Device(c10::DeviceType::XPU)));
+  return q;
+}
 class XPUDeviceAPI final : public DeviceAPI {
+ sycl::queue &q_;
  public:
+  XPUDeviceAPI():q_(getCurrentXPUStream()) {
+  }
   void SetDevice(DGLContext ctx) final {}
   void GetAttr(DGLContext ctx, DeviceAttrKind kind, DGLRetValue* rv) final {
     if (kind == kExist) {
@@ -26,9 +40,11 @@ class XPUDeviceAPI final : public DeviceAPI {
   void* AllocDataSpace(
       DGLContext ctx, size_t nbytes, size_t alignment,
       DGLDataType type_hint) final {
-    TensorDispatcher* tensor_dispatcher = TensorDispatcher::Global();
-    if (tensor_dispatcher->IsAvailable())
-      return tensor_dispatcher->CPUAllocWorkspace(nbytes);
+    void *mem = nullptr; 
+    mem = sycl::aligned_alloc_device(kDevAlignment, nbytes, q_);
+    q_.memset(mem,0,nbytes);
+    std::cout<<"allocated "<< nbytes<< " at address "<<mem<<std::endl;
+    return mem;
 
     void* ptr;
 #if _MSC_VER || defined(__MINGW32__)
@@ -45,24 +61,21 @@ class XPUDeviceAPI final : public DeviceAPI {
   }
 
   void FreeDataSpace(DGLContext ctx, void* ptr) final {
-    TensorDispatcher* tensor_dispatcher = TensorDispatcher::Global();
-    if (tensor_dispatcher->IsAvailable())
-      return tensor_dispatcher->CPUFreeWorkspace(ptr);
+    sycl::free(ptr, q_);
 
-#if _MSC_VER || defined(__MINGW32__)
-    _aligned_free(ptr);
-#else
-    free(ptr);
-#endif
+//#if _MSC_VER || defined(__MINGW32__)
+//    _aligned_free(ptr);
+//#else
+//    free(ptr);
+//#endif
   }
 
   void CopyDataFromTo(
       const void* from, size_t from_offset, void* to, size_t to_offset,
       size_t size, DGLContext ctx_from, DGLContext ctx_to,
       DGLDataType type_hint) final {
-    memcpy(
-        static_cast<char*>(to) + to_offset,
-        static_cast<const char*>(from) + from_offset, size);
+        q_.submit([&](sycl::handler &h) { h.memcpy(static_cast<char*>(to) + to_offset, static_cast<const char*>(from)+from_offset, size);});
+        q_.wait();
   }
 
   void RecordedCopyDataFromTo(
@@ -110,6 +123,7 @@ void XPUDeviceAPI::FreeWorkspace(DGLContext ctx, void* data) {
 
   dmlc::ThreadLocalStore<XPUWorkspacePool>::Get()->FreeWorkspace(ctx, data);
 }
+
 
 DGL_REGISTER_GLOBAL("device_api.xpu")
     .set_body([](DGLArgs args, DGLRetValue* rv) {

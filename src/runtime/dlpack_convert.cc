@@ -26,6 +26,11 @@ inline DGLContext ToDGLContext(const DLDevice& device) {
   DGLContext ctx;
   ctx.device_type = static_cast<DGLDeviceType>(device.device_type);
   ctx.device_id = device.device_id;
+  if (device.device_type == kDLOneAPI)
+  {
+    ctx.device_type = kDGLXPU;
+    ctx.device_id = 0;
+  }
   return ctx;
 }
 
@@ -41,6 +46,11 @@ inline DLDevice ToDLDevice(const DGLContext& ctx) {
   DLDevice device;
   device.device_type = static_cast<DLDeviceType>(ctx.device_type);
   device.device_id = ctx.device_id;
+  if (ctx.device_type == kDGLXPU)
+  {
+    device.device_type = kDLOneAPI;
+    device.device_id = 3;
+  }
   return device;
 }
 
@@ -123,7 +133,6 @@ int DGLArrayToDLPack(
   API_BEGIN();
   auto* nd_container = reinterpret_cast<NDArray::Container*>(from);
   DGLArray* nd = &(nd_container->dl_tensor);
-  // If the source DGLArray is not aligned, we should create a new aligned one
   if (alignment != 0 && !IsAligned(nd->data, alignment)) {
     std::vector<int64_t> shape_vec(nd->shape, nd->shape + nd->ndim);
     NDArray copy_ndarray = NDArray::Empty(shape_vec, nd->dtype, nd->ctx);

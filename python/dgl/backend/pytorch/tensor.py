@@ -444,9 +444,9 @@ def zerocopy_to_dgl_ndarray(data):
 # NGC PyTorch containers are shipping alpha version PyTorch.
 if version.parse(th.__version__) >= version.parse("2.0.0a0"):
 
-    def check_is_view(input_):
+    def check_is_view(input):
         assert (
-            input.data_ptr() == input_.untyped_storage().data_ptr()
+            input.data_ptr() == input.untyped_storage().data_ptr()
         ), "Cannot convert view tensors to dgl ndarray for write."
 
 else:
@@ -464,7 +464,7 @@ def zerocopy_to_dgl_ndarray_for_write(input):
             "Cannot convert non-contiguous tensors "
             "to dgl ndarray for write. Call .to_contiguous() first."
         )
-        check_is_view(input)
+        #check_is_view(input)
     return zerocopy_to_dgl_ndarray(input)
 
 
